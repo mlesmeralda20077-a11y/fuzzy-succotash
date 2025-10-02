@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+      <meta charset="UTF-8">
+      <title>DistilBERT QA in Browser</title>
+      <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers/dist/transformers.min.js"></script>
+</head>
+<body>
+      <h2>DistilBERT QA (ONNX Runtime Web)</h2>
+      <textarea id="context" rows="4" cols="50">
+The Eiffel Tower is located in Paris, France. It was built in 1889.
+      </textarea><br>
+      <input id="question" type="text" value="Where is the Eiffel Tower located?">
+      <button onclick="runQA()">Ask</button>
+      <p><b>Answer:</b> <span id="answer"></span></p>
+      <script>
+            let session;
+            async function init() {
+                  session = await ort.InferenceSession.create(
+                        "/workspaces/fuzzy-succotash/distilbert_squad_quantized.onnx", // hosted model URL
+                        { executionProviders: ['wasm'] }   // or 'webgpu' if supported
+                  );
+                  console.log("✅ Model loaded");
+            }
+            async function runQA() {
+                  const question = document.getElementById("question").value;
+                  const context = document.getElementById("context").value;
+                  // Use xenova/transformers.js tokenizer (works in browser)
+                  const tokenizer = await window.transformers.AutoTokenizer.from_pretrained("distilbert-base-cased-distilled-squad");
+                  const inputs = await tokenizer(question, context, { return_tensors: "np" });
+                  const feeds = {
+                        input_ids: inputs.input_ids,
+                        attention_mask: inputs.attention_mask
+                  };
+                  const results = await session.run(feeds);
+                  const start = results.start_logits.data;
+                  const end = results.end_logits.data;
+                  // Get max indices
+                  const startIdx = start.indexOf(Math.max(...start));
+                  const endIdx = end.indexOf(Math.max(...end));
+                  // Decode tokens back
+                  const answer_ids = inputs.input_ids[0].slice(startIdx, endIdx + 1);
+                  const answer = tokenizer.decode(answer_ids);
+                  document.getElementById("answer").innerText = answer;
+            }
+            init();
+      </script>
+</body>
+</html>
